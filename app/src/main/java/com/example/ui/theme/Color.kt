@@ -3,14 +3,14 @@ package com.example.ui.theme
 import androidx.compose.ui.graphics.Color
 
 // Premium Cybersecurity Dark Cyber Theme Colors
-val MidnightBlack = Color(0xFF0C1017)
-val DeepCharcoal = Color(0xFF161C24)
-val SurfaceDark = Color(0xFF1E2633)
+val MidnightBlack = Color(0xFF08080A)
+val DeepCharcoal = Color(0xFF141416)
+val SurfaceDark = Color(0xFF1E1E22)
 
-val CyberTeal = Color(0xFF00F5FF)
+val CyberTeal = Color(0xFF00F0FF)
 val NeonGreen = Color(0xFF39FF14)
-val DarkGreen = Color(0xFF0F5A1D)
-val CyberPink = Color(0xFFFF2A85)
+val DarkGreen = Color(0xFF0A4E15)
+val CyberPink = Color(0xFFFF007F)
 
 val TextPrimary = Color(0xFFE2E8F0)
 val TextSecondary = Color(0xFF94A3B8)

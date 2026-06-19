@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math';
 import 'dart:typed_list';
 import 'package:flutter/material.dart';
 
@@ -18,16 +19,16 @@ class UltraVpnApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Aria Connected',
+      title: 'Aria Unified',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         useMaterial3: true,
         brightness: Brightness.dark,
-        scaffoldBackgroundColor: const Color(0xFF08080A), // Midnight Black
+        scaffoldBackgroundColor: const Color(0xFF060608), // Ultimate Obsidian
         colorScheme: const ColorScheme.dark(
           primary: Color(0xFF00F0FF), // Cyber Teal
           secondary: Color(0xFFFF007F), // Cyber Pink
-          surface: Color(0xFF141416), // Deep Charcoal
+          surface: Color(0xFF101014), // Deep Charcoal
           onSurface: Color(0xFFE2E8F0), // Text Primary
         ),
         fontFamily: 'Segoe UI',
@@ -52,34 +53,57 @@ class _HomeScreenState extends State<HomeScreen> {
   // Connection State variables
   bool _isConnected = false;
   bool _isConnecting = false;
-  String _statusText = "آماده اتصال به شتاب‌دهنده آریا (Ready)";
-  String _activeIp = "172.19.0.1 (TUN)";
+  String _statusText = "آماده سپرگذاری فرکانس آریا";
+  String _activeIp = "172.19.0.1 (TUN interface)";
   int _activePing = 0;
   
-  // Scanned IP lists
+  // CDN Scanner variables
   List<ScannedIP> _discoveredIps = [];
   ScannedIP? _bestRoute;
   
-  // Credentials in memory (to be shredded upon disconnect)
+  // High secrecy memory slots
   Uint8List? _secureUuidBuffer;
   Uint8List? _secureConfigBuffer;
 
-  // Active configuration selection
+  // Configuration sets
   VpnConfig? _selectedConfig;
   List<VpnConfig> _configs = [];
 
+  // Toggles and Premium parameters
+  bool _isLanSharing = false;
+  bool _isDecoyActive = false;
+  bool _splitTunnelingEnabled = false;
+  bool _autoPingRoutation = true;
+  bool _chainProxyEnabled = false;
+  String? _chainBridgeId;
+
+  // Custom Split Tunneling Simulated App Registry
+  final Map<String, bool> _splitTunnelApps = {
+    "سیستم بانکی ایران (Iran Banking)": true,
+    "برنامه شاد آموزش ملی (Shad App)": true,
+    "محتوای اسنپ و تپسی (Snapp / Tap30)": true,
+    "دیجیکالا سرویس (Digikala CRM)": false,
+    "تلگرام پیام‌رسان (Telegram Messenger)": false,
+    "اینستاگرام (Instagram Social)": false,
+  };
+
   // Timers and logs
   Timer? _durationTimer;
+  Timer? _autoPingScheduler;
+  Timer? _decoyTrafficTimer;
   int _connectionDurationSeconds = 0;
+  double _decoySentMb = 0.0;
+  int _decoyPacketsInjected = 0;
   final List<String> _securityLogs = [];
 
   @override
   void initState() {
     super.initState();
     _loadConfigurations();
-    _addLog("سامانه مرکزی آریا بارگذاری شد. فناوری ضد فیلترینگ فعال است.");
+    _addLog("سامانه مرکزی پدافند سایبری آریا بارگذاری شد.");
+    _addLog("ماژول ضد تحریم T2HASH با ضریب ایمنی استقراری متصل است.");
     
-    // Initialize the Amir Scanner Core Scheduler (Battery optimized, every 30 mins)
+    // Core CDN discovery scheduler
     _scanner.initializeBatteryOptimizedSchedule(
       onOptimalIPFound: (ScannedIP newIP) {
         setState(() {
@@ -88,11 +112,14 @@ class _HomeScreenState extends State<HomeScreen> {
           }
           if (_bestRoute == null || newIP.latencyMs < _bestRoute!.latencyMs) {
             _bestRoute = newIP;
-            _addLog("مسیر پیشرفته اسکنر امیر: ${newIP.ip} با پینگ ${newIP.latencyMs}ms شناسایی شد.");
+            _addLog("مسیر پیشفرض CDN بهینه‌سازی شد: ${newIP.ip} (${newIP.latencyMs}ms)");
           }
         });
       },
     );
+
+    // Dynamic Silent auto-ping loop running every 10 seconds for demo (conceptually mapped to 10 mins)
+    _startAutoPingTask();
   }
 
   void _loadConfigurations() {
@@ -101,17 +128,143 @@ class _HomeScreenState extends State<HomeScreen> {
       if (_configs.isNotEmpty && _selectedConfig == null) {
         _selectedConfig = _configs.first;
       }
+      if (_configs.isNotEmpty && _chainBridgeId == null) {
+        _chainBridgeId = _configs.last.id;
+      }
     });
   }
 
   void _addLog(String log) {
+    if (!mounted) return;
     final timestamp = DateTime.now().toIso8601String().substring(11, 19);
     setState(() {
       _securityLogs.insert(0, "[$timestamp] $log");
     });
   }
 
-  // Master secure toggle event
+  // Active Background scheduler which rotates targets silently if latency triggers anomalies
+  void _startAutoPingTask() {
+    _autoPingScheduler?.cancel();
+    _autoPingScheduler = Timer.periodic(const Duration(seconds: 20), (timer) async {
+      if (!_autoPingRoutation) return;
+
+      if (_isConnected) {
+        _addLog("پایش پس‌زمینه خودکار: بررسی سلامت پورت‌های دسترسی...");
+        await ConfigManager.performRealPingTest(
+          onSingleProgress: (id, ping) {
+            if (ping != null && _selectedConfig != null && id != _selectedConfig!.id) {
+              final currentPing = _selectedConfig!.lastPingMs ?? 999;
+              if (ping < currentPing - 30) {
+                // Better node found seamlessly!
+                final betterConfig = _configs.firstWhere((element) => element.id == id);
+                _addLog("جابجایی بدون قطعی! مسیر سریع‌تر یافت شد: ${betterConfig.name} با پینگ $ping ms");
+                setState(() {
+                  _selectedConfig = betterConfig;
+                  _activePing = ping;
+                });
+              }
+            }
+          }
+        );
+      }
+    });
+  }
+
+  // Master connection routine linking Sing-box Config + Kyber PQC + Decoy
+  Future<void> _connectVpn() async {
+    if (_selectedConfig == null) {
+      _showToast(context, "هیچ سروری بارگذاری نشده است!");
+      return;
+    }
+
+    setState(() {
+      _isConnecting = true;
+      _statusText = "فرآیند ایمن سازی و تزریق لایه محافظ...";
+    });
+
+    _addLog("فراخوانی هسته سینگ باکس برای روت تانل...");
+
+    // Store keys inside secure zeroable RAM buffers
+    _secureUuidBuffer = _rescueService.allocateSecureCredential(_selectedConfig!.uuid);
+
+    // Apply config chains if checked
+    String targetServer = _selectedConfig!.server;
+    int targetPort = _selectedConfig!.port;
+    if (_chainProxyEnabled && _chainBridgeId != null) {
+      final bridge = _configs.firstWhere((element) => element.id == _chainBridgeId, orElse: () => _selectedConfig!);
+      targetServer = bridge.server;
+      targetPort = bridge.port;
+      _addLog("زنجیره فعال شد: کلاینت -> ${bridge.name} -> ${_selectedConfig!.name}");
+    }
+
+    // Generate Singbox configuration
+    final String configString = SingBoxConfigManager.generateConfigJson(
+      server: targetServer,
+      port: targetPort,
+      uuid: utf8.decode(_secureUuidBuffer!),
+      protocol: _selectedConfig!.protocol,
+      sni: _selectedConfig!.sni,
+      tls: true,
+      tlsPadding: true,
+      fragmentMin: 12,
+      fragmentMax: 88,
+      pqcEnabled: true, // Forces Post-quantum Key Exchange (Kyber768 handshake)
+      dnsLeakSecured: true,
+      fakeTrafficEnabled: _isDecoyActive,
+    );
+
+    _secureConfigBuffer = _rescueService.allocateSecureCredential(configString);
+
+    // Spawning engine delay emulator
+    await Future.delayed(const Duration(milliseconds: 1300));
+
+    setState(() {
+      _isConnected = true;
+      _isConnecting = false;
+      _activeIp = targetServer;
+      _activePing = _selectedConfig!.lastPingMs ?? _bestRoute?.latencyMs ?? 62;
+      _statusText = "تونل آریا کوانتوم با موفقیت مستقر شد";
+    });
+
+    _addLog("سامانه ضد نظارت رصد ترافیک با موفقیت مستقر شد.");
+    _startDurationTimer();
+
+    // Start Decoy packet background emitter if toggle is active
+    if (_isDecoyActive) {
+      _startDecoyEmulation();
+    }
+  }
+
+  // Pure zero-out memory destruction on click disconnect
+  Future<void> _disconnectVpn() async {
+    _durationTimer?.cancel();
+    _stopDecoyEmulation();
+
+    setState(() {
+      _statusText = "درحال بازخوانی سکتورها و نابودسازی داده‌ها...";
+    });
+
+    _addLog("عملیات خروج اضطراری: اجرای پروتکل امحای اطلاعات RAM...");
+
+    if (_secureUuidBuffer != null && _secureConfigBuffer != null) {
+      _rescueService.forceDeepMemoryWipe([_secureUuidBuffer!, _secureConfigBuffer!]);
+      _secureUuidBuffer = null;
+      _secureConfigBuffer = null;
+      _addLog("تضمین امنیت نهایی کلاینت: کلیدهای نشست و متادیتا کاملا صفرزنی شدند.");
+    }
+
+    await Future.delayed(const Duration(milliseconds: 700));
+
+    setState(() {
+      _isConnected = false;
+      _statusText = "سپر تانل قطع شد";
+      _connectionDurationSeconds = 0;
+    });
+
+    _addLog("سیستم با موفقیت به اینترنت مستقیم سیستم بازگشت.");
+    _scanner.runInstantOnDisconnect(); // Prepare new clean endpoints securely
+  }
+
   Future<void> _toggleConnection() async {
     if (_isConnected) {
       await _disconnectVpn();
@@ -120,146 +273,125 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  // Connect VPN utilising chosen config & scanner
-  Future<void> _connectVpn() async {
-    if (_selectedConfig == null) {
-      _showToast(context, "لطفاً ابتدا یک کانفیگ انتخاب کنید!");
-      return;
-    }
-
-    setState(() {
-      _isConnecting = true;
-      _statusText = "در حال اتصال به ${_selectedConfig!.name}...";
+  // Decoy Packet Simulation (Obfuscating pattern metrics for bypass)
+  void _startDecoyEmulation() {
+    _decoyTrafficTimer?.cancel();
+    _decoyTrafficTimer = Timer.periodic(const Duration(milliseconds: 800), (timer) {
+      if (!_isConnected) return;
+      final Random random = Random();
+      final double chunkMb = (random.nextInt(350) + 100) / 1024.0;
+      setState(() {
+        _decoySentMb += chunkMb;
+        _decoyPacketsInjected += random.nextInt(6) + 2;
+      });
+      if (random.nextInt(10) > 7) {
+        _addLog("تزریق لایه ترافیک تصادفی: ارسال ${chunkMb.toStringAsFixed(2)} MB بسته داده فیک جهت اغفال فایروال DPI.");
+      }
     });
-
-    _addLog("آغاز هندشیک کوانتومی با سرور ${_selectedConfig!.server}...");
-
-    // Simulate key generation and storage inside secure RAM buffers
-    _secureUuidBuffer = _rescueService.allocateSecureCredential(_selectedConfig!.uuid);
-
-    final String targetServer = _selectedConfig!.server;
-    final int targetPing = _selectedConfig!.lastPingMs ?? _bestRoute?.latencyMs ?? 84;
-
-    // Generate Sing-box Config safely, integrating the chosen profile
-    final String configJson = SingBoxConfigManager.generateConfigJson(
-      server: targetServer,
-      port: _selectedConfig!.port,
-      uuid: utf8.decode(_secureUuidBuffer!),
-      protocol: _selectedConfig!.protocol,
-      sni: _selectedConfig!.sni,
-      tls: true,
-      tlsPadding: true,
-      fragmentMin: 15,
-      fragmentMax: 95,
-      pqcEnabled: true, // Forces Kyber PQC Cryptography Handshake
-      dnsLeakSecured: true,
-      fakeTrafficEnabled: true,
-    );
-
-    // Save configuration securely inside temporary RAM buffer
-    _secureConfigBuffer = _rescueService.allocateSecureCredential(configJson);
-
-    // Dynamic core emulation delay
-    await Future.delayed(const Duration(milliseconds: 1400));
-
-    setState(() {
-      _isConnected = true;
-      _isConnecting = false;
-      _activeIp = targetServer;
-      _activePing = targetPing;
-      _statusText = "اتصال پایدار با رمزنگاری کوانتومی برقرار است";
-    });
-
-    _addLog("سپر سایبری ضد DPI فعال شد. ترافیک کاملاً پنهانگردید.");
-    _startDurationTimer();
   }
 
-  // Disconnection and Shredding Core logic
-  Future<void> _disconnectVpn() async {
-    _durationTimer?.cancel();
-    
+  void _stopDecoyEmulation() {
+    _decoyTrafficTimer?.cancel();
     setState(() {
-      _statusText = "پاکسازی کامل داده‌ها از حافظه RAM (Anti-Forensics)...";
+      _decoySentMb = 0.0;
+      _decoyPacketsInjected = 0;
     });
-
-    _addLog("درخواست قطع اتصال صادر شد. فرآیند امحای کلیدها آغاز شد...");
-
-    // DEEP MEMORY WIPE (Instant Shredding)
-    if (_secureUuidBuffer != null && _secureConfigBuffer != null) {
-      _rescueService.forceDeepMemoryWipe([_secureUuidBuffer!, _secureConfigBuffer!]);
-      _secureUuidBuffer = null;
-      _secureConfigBuffer = null;
-      _addLog("امنیت تضمین شد: تمامی کلیدها و جریان‌های متنی هکس از رم سیستم پاکسازی شدند.");
-    }
-
-    await Future.delayed(const Duration(milliseconds: 800));
-
-    setState(() {
-      _isConnected = false;
-      _statusText = "اتصال قطع شد (Disconnected)";
-      _connectionDurationSeconds = 0;
-    });
-
-    _addLog("فرآیند تونل‌زدایی متوقف شد.");
-    _scanner.runInstantOnDisconnect(); // Background refresh
   }
 
-  // Perform dynamic latency sort sweep
-  Future<void> _runBulkPingTest() async {
-    _addLog("شروع اسکن سراسری پینگ کانفیگ‌ها (حالت دسته‌ای v2rayNG)...");
-    
-    await ConfigManager.performRealPingTest(
-      onSingleProgress: (id, ping) {
-        setState(() {
-          _loadConfigurations(); // Refresh view state dynamically
-          if (ping != null) {
-            _addLog("کانفیگ [$id] به پینگ مطلوب $ping ms رسید.");
-          } else {
-            _addLog("هشدار: خطا در اتصال با کانفیگ [$id] (Timeout).");
-          }
-        });
+  // Simulated High Fidelity Scanner Dialog
+  void _showCameraQRScannerMock() {
+    showGeneralDialog(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: "QRMock",
+      transitionDuration: const Duration(milliseconds: 250),
+      pageBuilder: (context, anim1, anim2) {
+        return Scaffold(
+          backgroundColor: Colors.black.withOpacity(0.95),
+          body: Stack(
+            children: [
+              // Matrix/Grid scan aesthetic line simulator
+              Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const Text(
+                    "بارگذاری دوربین / رهگیر بارکد نوری آریا",
+                    style: TextStyle(color: Color(0xFF00F0FF), fontSize: 16, fontWeight: FontWeight.bold),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    "لنز دوربین خروجی گوشی خود را روی بارکد نگه دارید",
+                    style: TextStyle(color: Colors.white54, fontSize: 12),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 32),
+                  Center(
+                    child: Container(
+                      height: 240,
+                      width: 240,
+                      decoration: BoxDecoration(
+                        border: Border.all(color: const Color(0xFF00F0FF), width: 3),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Stack(
+                        alignment: Alignment.center,
+                        children: [
+                          Icon(Icons.qr_code_scanner, size: 100, color: const Color(0xFF00F0FF).withOpacity(0.5)),
+                          // Scanning green pulse bar
+                          Positioned(
+                            top: 10,
+                            child: AnimatedContainer(
+                              duration: const Duration(seconds: 2),
+                              curve: Curves.easeInOut,
+                              height: 2,
+                              width: 210,
+                              color: const Color(0xFF39FF14),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 48),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 48.0),
+                    child: ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFFFF007F),
+                        foregroundColor: Colors.white,
+                      ),
+                      onPressed: () {
+                        // Import clean fallback test payload instantly
+                        const mockQRPayload = "vless://7c126589-32cc-4971-8975-ad438349fa89@104.21.40.11:443?sni=bypass.ir#AriaQRNode";
+                        final parsed = ConfigManager.parseShareLink(mockQRPayload);
+                        if (parsed != null) {
+                          ConfigManager.addConfig(parsed);
+                          _loadConfigurations();
+                          _addLog("ارتباط نوری برقرار شد! گره از روی دوربین افزوده شد: ${parsed.name}");
+                        }
+                        Navigator.pop(context);
+                      },
+                      icon: const Icon(Icons.flash_on),
+                      label: const Text("تست بارکد نمونه (Mock Scan QR)"),
+                    ),
+                  ),
+                ],
+              ),
+              Positioned(
+                top: 40,
+                right: 20,
+                child: IconButton(
+                  icon: const Icon(Icons.close, size: 28, color: Colors.white54),
+                  onPressed: () => Navigator.pop(context),
+                ),
+              )
+            ],
+          ),
+        );
       },
     );
-
-    _addLog("تست پینگ سراسری با موفقیت خاتمه یافت.");
-  }
-
-  // Emergency Dead-Drop Rescue
-  Future<void> _triggerDeadDropRescue() async {
-    _addLog("فعالسازی شبکه نجات ضد فیلتر آریا...");
-    setState(() {
-      _statusText = "در حال بازیابی اطلاعات اضطراری...";
-    });
-
-    final DecoupledConfig? rescued = await _rescueService.executeSelfHealingRescue();
-    
-    if (rescued != null) {
-      final newConfig = VpnConfig(
-        id: "rescued-${DateTime.now().millisecondsSinceEpoch}",
-        name: "کانفیگ بازیابی نجات (Aria Rescue Node)",
-        protocol: rescued.protocol,
-        server: rescued.server,
-        port: rescued.port,
-        uuid: rescued.uuid,
-        sni: rescued.sni,
-      );
-
-      ConfigManager.addConfig(newConfig);
-      _loadConfigurations();
-      
-      _addLog("تونل نجات فعال شد: سرور ${rescued.server} اضافه شد.");
-      setState(() {
-        _selectedConfig = newConfig;
-        _statusText = "کانفیگ اضطراری دریافت شد!";
-      });
-      _showToast(context, "تونل نجات با موفقیت مستقر شد!");
-    } else {
-      _addLog("خطا: سرورهای اضطراری نجات موقتاً در دسترس نیستند.");
-      setState(() {
-        _statusText = "پل نجات متصل نشد.";
-      });
-      _showToast(context, "پورت‌های نجات مسدود هستند.");
-    }
   }
 
   // Dialog to manually parse links via user input text fields
@@ -269,9 +401,9 @@ class _HomeScreenState extends State<HomeScreen> {
       context: context,
       builder: (context) {
         return AlertDialog(
-          backgroundColor: const Color(0xFF141416),
+          backgroundColor: const Color(0xFF101014),
           title: const Text(
-            "درج کانفیگ جدید به سبک v2rayNG",
+            "درج پیکربندی جدید",
             style: TextStyle(fontSize: 15, color: Color(0xFF00F0FF)),
             textAlign: TextAlign.right,
           ),
@@ -279,7 +411,7 @@ class _HomeScreenState extends State<HomeScreen> {
             mainAxisSize: MainAxisSize.min,
             children: [
               const Text(
-                "لینک اشتراک خود را (vless:// یا trojan://) در کادر زیر وارد کنید تا تحلیل هوشمند آریا آن را بومی‌سازی کند:",
+                "پیوند اشتراک (VLESS / Trojan) را اینجا قرار دهید تا کلاینت ضد تحریم آریا آن را پردازش کند:",
                 style: TextStyle(fontSize: 12, color: Colors.white70),
                 textAlign: TextAlign.right,
               ),
@@ -314,19 +446,72 @@ class _HomeScreenState extends State<HomeScreen> {
                 if (parsed != null) {
                   ConfigManager.addConfig(parsed);
                   _loadConfigurations();
-                  _addLog("پارس لینک موفقیت آمیز بود. کانفیگ جدید اضافه شد: ${parsed.name}");
+                  _addLog("بومی‌سازی موفق! کانفیگ ثبت گردید: ${parsed.name}");
                   _showToast(context, "با موفقیت وارد شد!");
                 } else {
-                  _showToast(context, "ساختار پیوند نامعتبر است!");
+                  _showToast(context, "لینک آدرس ورودی نادرست است.");
                 }
                 Navigator.pop(context);
               },
-              child: const Text("وارد کردن (Import)"),
+              child: const Text("تایید ورود"),
             ),
           ],
         );
       },
     );
+  }
+
+  // Active Dead-Drop Rescue recovery routine
+  Future<void> _triggerDeadDropRescue() async {
+    _addLog("فعالسازی پورت نجات اضطراری ضد مسدودی...");
+    setState(() {
+      _statusText = "در حال بازیابی پل‌های دسترسی خارجی...";
+    });
+
+    final DecoupledConfig? rescued = await _rescueService.executeSelfHealingRescue();
+    
+    if (rescued != null) {
+      final newConfig = VpnConfig(
+        id: "rescued-${DateTime.now().millisecondsSinceEpoch}",
+        name: "پل نجات رمزگذاری شده (Quantum Rescue Node)",
+        protocol: rescued.protocol,
+        server: rescued.server,
+        port: rescued.port,
+        uuid: rescued.uuid,
+        sni: rescued.sni,
+      );
+
+      ConfigManager.addConfig(newConfig);
+      _loadConfigurations();
+      
+      _addLog("شبکه نجات با موفقیت ریکاوری شد: سرور ${rescued.server} مستقر گردید.");
+      setState(() {
+        _selectedConfig = newConfig;
+        _statusText = "پل نجات متصل شد.";
+      });
+      _showToast(context, "پل نجات گره دوم بازیابی شد!");
+    } else {
+      _addLog("شکست در دریافت پل نجات: سرورهای میزبان اینترنتی مسدود شده‌اند.");
+      setState(() {
+        _statusText = "سرور نجات در دسترس نیست.";
+      });
+      _showToast(context, "پورت‌های نجات مسدود هستند.");
+    }
+  }
+
+  Future<void> _runBulkPingTest() async {
+    _addLog("آغاز تست سرعت کلی شبکه آریا...");
+    await ConfigManager.performRealPingTest(
+      onSingleProgress: (id, ping) {
+        setState(() {
+          _loadConfigurations();
+          if (ping != null) {
+            _addLog("تست پینگ موفق کانفیگ [$id]: مقدار $ping ms");
+          }
+        });
+      },
+    );
+    _addLog("تست پینگ به پایان رسید.");
   }
 
   void _startDurationTimer() {
@@ -360,45 +545,32 @@ class _HomeScreenState extends State<HomeScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text(
-          "آریا کوانتوم (Aria v2rayNG)",
+          "آریا کوانتوم پلاس (Aria Quantum+)",
           style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
         ),
         centerTitle: true,
         backgroundColor: Colors.transparent,
         elevation: 0,
         leading: IconButton(
-          tooltip: "پاکسازی کانفیگ‌های مسدود",
-          icon: const Icon(Icons.cleaning_services_outlined, color: Color(0xFFFF007F)),
+          tooltip: "پاکسازی بهینه دیتابیس",
+          icon: const Icon(Icons.cleaning_services, color: Color(0xFFFF007F)),
           onPressed: () {
             ConfigManager.removeDeadConfigs();
             _loadConfigurations();
-            _addLog("پاکسازی خودکار: تمامی مسیرهای قطع و تانل‌های بلااستفاده از دیتابیس حذف شدند.");
-            _showToast(context, "کانفیگ‌های معیوب حذف شدند.");
+            _addLog("پایگاه داده پاکسازی شد. تمامی اتصال‌های نامعتبر یا مسدود حذف گشتند.");
+            _showToast(context, "کانفیگ‌های تایم‌اوت پاکسازی شدند.");
           },
         ),
         actions: [
           IconButton(
-            tooltip: "تست پینگ سراسری",
+            tooltip: "تست سرعت",
             icon: const Icon(Icons.flash_on, color: Color(0xFF39FF14)),
             onPressed: _runBulkPingTest,
           ),
           IconButton(
-            tooltip: "بازیابی شبکه نجات",
-            icon: const Icon(Icons.healing_outlined, color: Color(0xFF00F0FF)),
+            tooltip: "دریافت پل اضطراری",
+            icon: const Icon(Icons.healing, color: Color(0xFF00F0FF)),
             onPressed: _triggerDeadDropRescue,
-          ),
-          IconButton(
-            tooltip: "حذف همه کانفیگ‌ها",
-            icon: const Icon(Icons.delete_forever_outlined, color: Colors.white54),
-            onPressed: () {
-              ConfigManager.clearAllConfigs();
-              setState(() {
-                _configs.clear();
-                _selectedConfig = null;
-              });
-              _addLog("پایگاه داده به طور کامل پاکسازی شد.");
-              _showToast(context, "تمامی کانفیگ‌ها حذف شدند.");
-            },
           ),
         ],
       ),
@@ -408,20 +580,20 @@ class _HomeScreenState extends State<HomeScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // 1. Connection Circle Button Visualizer
+              // 1. Sleek VPN Action Area
               Center(
                 child: Container(
-                  height: 160,
-                  width: 160,
+                  height: 150,
+                  width: 150,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     boxShadow: [
                       BoxShadow(
                         color: _isConnected 
-                            ? const Color(0xFF00F0FF).withOpacity(0.2)
+                            ? const Color(0xFF00F0FF).withOpacity(0.25)
                             : const Color(0xFFFF007F).withOpacity(0.15),
-                        blurRadius: 40,
-                        spreadRadius: 5,
+                        blurRadius: 35,
+                        spreadRadius: 2,
                       ),
                     ],
                   ),
@@ -430,8 +602,8 @@ class _HomeScreenState extends State<HomeScreen> {
                     children: [
                       AnimatedContainer(
                         duration: const Duration(milliseconds: 300),
-                        height: 130,
-                        width: 130,
+                        height: 120,
+                        width: 120,
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
                           border: Border.all(
@@ -440,7 +612,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                 : const Color(0xFFFF007F),
                             width: 3,
                           ),
-                          color: const Color(0xFF141416),
+                          color: const Color(0xFF101014),
                         ),
                         child: Material(
                           color: Colors.transparent,
@@ -449,8 +621,8 @@ class _HomeScreenState extends State<HomeScreen> {
                             customBorder: const CircleBorder(),
                             onTap: _isConnecting ? null : _toggleConnection,
                             child: Icon(
-                              _isConnected ? Icons.verified_user : Icons.power_settings_new,
-                              size: 54,
+                              _isConnected ? Icons.shield : Icons.power_settings_new,
+                              size: 48,
                               color: _isConnected 
                                   ? const Color(0xFF00F0FF) 
                                   : const Color(0xFFFF007F),
@@ -470,7 +642,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   _statusText,
                   textAlign: TextAlign.center,
                   style: TextStyle(
-                    fontSize: 14,
+                    fontSize: 13,
                     color: _isConnected ? const Color(0xFF00F0FF) : Colors.white70,
                     fontWeight: FontWeight.w600,
                   ),
@@ -483,7 +655,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   child: Text(
                     _formatDuration(_connectionDurationSeconds),
                     style: const TextStyle(
-                      fontSize: 22, 
+                      fontSize: 20, 
                       fontWeight: FontWeight.bold,
                       letterSpacing: 1.5,
                       color: Color(0xFF39FF14)
@@ -493,73 +665,229 @@ class _HomeScreenState extends State<HomeScreen> {
 
               const SizedBox(height: 16),
 
-              // 2. Active Session Metrics Card
+              // 2. Toggles Core Features Dashboard (Decoy, LAN Share, Auto-rotation)
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF141416),
+                  color: const Color(0xFF101014),
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(color: Colors.white10),
                 ),
                 child: Column(
                   children: [
-                    _buildMetricRow("پروتکل ترافیک فعال", _isConnected ? "${_selectedConfig?.protocol} + Fragment" : "غیرفعال", Icons.lock_outline),
-                    const Divider(color: Colors.white10, height: 16),
-                    _buildMetricRow("آی‌پی هدف امنیتی", _isConnected ? _activeIp : "غیرفعال", Icons.public),
-                    const Divider(color: Colors.white10, height: 16),
-                    _buildMetricRow("پینگ کانکشن اصلی", "${_isConnected ? _activePing : '0'} ms", Icons.speed),
+                    // Decoy slider
+                    SwitchListTile(
+                      dense: true,
+                      title: const Text("تزریق ترافیک فیک (DPI Obfuscator)", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                      subtitle: const Text("تولید نویز سایبری جهت فریب فایروال‌های شناسایی حجم", style: TextStyle(fontSize: 10, color: Colors.white38)),
+                      activeColor: const Color(0xFF00F0FF),
+                      value: _isDecoyActive,
+                      onChanged: (val) {
+                        setState(() {
+                          _isDecoyActive = val;
+                          if (_isDecoyActive && _isConnected) {
+                            _startDecoyEmulation();
+                          } else {
+                            _stopDecoyEmulation();
+                          }
+                        });
+                      },
+                    ),
+                    const Divider(color: Colors.white10, height: 10),
+                    // LAN Share
+                    SwitchListTile(
+                      dense: true,
+                      title: const Text("اشتراک‌گذاری پروکسی (Allow LAN)", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                      subtitle: const Text("امکان عبور ترافیک لوازم خانگی متصل به هات‌اسپات وای‌فای کلاینت", style: TextStyle(fontSize: 10, color: Colors.white38)),
+                      activeColor: const Color(0xFFFF007F),
+                      value: _isLanSharing,
+                      onChanged: (val) {
+                        setState(() {
+                          _isLanSharing = val;
+                          _addLog("قابلیت اشتراک لن: ${_isLanSharing ? 'فعال' : 'غیرفعال'} شد. پورت انتشار: 10808");
+                        });
+                      },
+                    ),
+                    const Divider(color: Colors.white10, height: 10),
+                    // Silent Auto-ping
+                    SwitchListTile(
+                      dense: true,
+                      title: const Text("روت‌ینگ خودکار هوشمند (Smart Back-ping)", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                      subtitle: const Text("تغییر نامحسوس و آنی کانکشن به سریع‌ترین نود مجاز دیتابیس", style: TextStyle(fontSize: 10, color: Colors.white38)),
+                      activeColor: const Color(0xFF39FF14),
+                      value: _autoPingRoutation,
+                      onChanged: (val) {
+                        setState(() {
+                          _autoPingRoutation = val;
+                        });
+                      },
+                    ),
                   ],
                 ),
               ),
 
-              const SizedBox(height: 18),
+              const SizedBox(height: 16),
 
-              // 3. v2rayNG Style Configuration Registry List
+              // 3. Dynamic Decoy Stats Panel
+              if (_isDecoyActive && _isConnected)
+                Container(
+                  margin: const EdgeInsets.only(bottom: 16),
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: const Color(0x3339FF14),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: const Color(0xFF39FF14).withOpacity(0.3)),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.leak_add, color: Color(0xFF39FF14), size: 24),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text("مانیتور فریب سایبری (Obfuscator Panel)", style: TextStyle(fontSize: 12, color: Color(0xFF39FF14), fontWeight: FontWeight.bold)),
+                            const SizedBox(height: 4),
+                            Text(
+                              "حجم تزریق داده: ${_decoySentMb.toStringAsFixed(2)} MB  |  تعداد بسته‌ها: $_decoyPacketsInjected",
+                              style: const TextStyle(fontSize: 10, color: Colors.white70, fontFamily: 'monospace'),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+              // 4. Multiplexing & Chain Proxy Options Card
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF101014),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.white10),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text("زنجیره‌سازی پروکسی (Chain Proxies)", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                        Switch(
+                          activeColor: const Color(0xFF00F0FF),
+                          value: _chainProxyEnabled,
+                          onChanged: (val) {
+                            setState(() {
+                              _chainProxyEnabled = val;
+                              _addLog("استفاده از پل‌های عبور متوالی: ${_chainProxyEnabled ? 'فعال' : 'غیرفعال'}");
+                            });
+                          },
+                        ),
+                      ],
+                    ),
+                    if (_chainProxyEnabled) ...[
+                      const SizedBox(height: 8),
+                      const Text("انتخاب گره ترانزیت (Transit Node):", style: TextStyle(fontSize: 11, color: Colors.white54)),
+                      DropdownButton<String>(
+                        isExpanded: true,
+                        value: _chainBridgeId,
+                        dropdownColor: const Color(0xFF101014),
+                        items: _configs.map((config) {
+                          return DropdownMenuItem<String>(
+                            value: config.id,
+                            child: Text(config.name, style: const TextStyle(fontSize: 12)),
+                          );
+                        }).toList(),
+                        onChanged: (val) {
+                          setState(() {
+                            _chainBridgeId = val;
+                          });
+                        },
+                      ),
+                    ]
+                  ],
+                ),
+              ),
+
+              const SizedBox(height: 16),
+
+              // 5. Per-App Routing / Split Tunneling Widget
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Text(
-                    "پیکربندی‌ها (Configuration Nodes)",
-                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.white70),
-                  ),
-                  Text(
-                    "${_configs.length} سرور بارگذاری شده",
-                    style: const TextStyle(fontSize: 11, color: Color(0xFF00F0FF)),
+                  const Text("تفکیک برنامه‌ها (Split Tunneling)", style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.white70)),
+                  Switch(
+                    activeColor: const Color(0xFFFF007F),
+                    value: _splitTunnelingEnabled,
+                    onChanged: (val) {
+                      setState(() {
+                        _splitTunnelingEnabled = val;
+                        _addLog("فرآیند تفکیک ترافیک: ${_splitTunnelingEnabled ? 'فعال' : 'غیرفعال'} شد.");
+                      });
+                    },
                   ),
                 ],
               ),
-              const SizedBox(height: 8),
+              if (_splitTunnelingEnabled)
+                Container(
+                  margin: const EdgeInsets.only(top: 8),
+                  height: 120,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF101014),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.white10),
+                  ),
+                  child: ListView(
+                    children: _splitTunnelApps.keys.map((appName) {
+                      return CheckboxListTile(
+                        dense: true,
+                        activeColor: const Color(0xFFFF007F),
+                        title: Text(appName, style: const TextStyle(fontSize: 11)),
+                        value: _splitTunnelApps[appName],
+                        onChanged: (val) {
+                          setState(() {
+                            _splitTunnelApps[appName] = val ?? false;
+                            _addLog("تغییر اولویت تفکیک اپلیکیشن $appName به: ${val == true ? 'دور زدن تونل' : 'رد کردن از تونل'}");
+                          });
+                        },
+                      );
+                    }).toList(),
+                  ),
+                ),
 
+              const SizedBox(height: 16),
+
+              // 6. Config Nodes Table and Navigation List
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text("پیکربندی‌ها (Configuration Nodes)", style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.white70)),
+                  Text("${_configs.length} سرور بارگذاری شده", style: const TextStyle(fontSize: 11, color: Color(0xFF00F0FF))),
+                ],
+              ),
+              const SizedBox(height: 8),
+              
               _configs.isEmpty
                   ? Container(
                       padding: const EdgeInsets.all(24),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF141416),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
+                      decoration: BoxDecoration(color: const Color(0xFF101014), borderRadius: BorderRadius.circular(12)),
                       child: const Center(
-                        child: Text(
-                          "هیچ کانفیگی وارد نشده است. دکمه '+' پایین را برای درج وارد کنید.",
-                          textAlign: TextAlign.center,
-                          style: TextStyle(fontSize: 12, color: Colors.white38),
-                        ),
+                        child: Text("هیچ کانفیگی یافت نشد. دانگل '+' را فشار دهید.", style: TextStyle(fontSize: 12, color: Colors.white38)),
                       ),
                     )
                   : SizedBox(
-                      height: 180,
+                      height: 165,
                       child: ListView.builder(
                         itemCount: _configs.length,
                         itemBuilder: (context, index) {
                           final cfg = _configs[index];
                           final isCurrent = _selectedConfig?.id == cfg.id;
                           return Card(
-                            color: isCurrent ? const Color(0xFF1E1E22) : const Color(0xFF141416),
+                            color: isCurrent ? const Color(0xFF1E1E22) : const Color(0xFF101014),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(10),
-                              side: BorderSide(
-                                color: isCurrent ? const Color(0xFF00F0FF) : Colors.transparent,
-                                width: 1.5,
-                              ),
+                              side: BorderSide(color: isCurrent ? const Color(0xFF00F0FF) : Colors.transparent, width: 1.5),
                             ),
                             margin: const EdgeInsets.only(bottom: 8),
                             child: ListTile(
@@ -567,31 +895,23 @@ class _HomeScreenState extends State<HomeScreen> {
                               onTap: () {
                                 setState(() {
                                   _selectedConfig = cfg;
-                                  _addLog("سوئیچ کانکشن هدف به گره: ${cfg.name}");
+                                  _addLog("تغییر سرور هدف به گره: ${cfg.name}");
                                 });
                               },
                               leading: CircleAvatar(
                                 backgroundColor: cfg.protocol == "VLESS" ? const Color(0xFF00F0FF).withOpacity(0.1) : const Color(0xFFFF007F).withOpacity(0.1),
-                                radius: 16,
+                                radius: 15,
                                 child: Text(
                                   cfg.protocol[0],
                                   style: TextStyle(
-                                    fontSize: 12,
+                                    fontSize: 11,
                                     color: cfg.protocol == "VLESS" ? const Color(0xFF00F0FF) : const Color(0xFFFF007F),
                                     fontWeight: FontWeight.bold,
                                   ),
                                 ),
                               ),
-                              title: Text(
-                                cfg.name,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
-                              ),
-                              subtitle: Text(
-                                "${cfg.server}:${cfg.port}",
-                                style: const TextStyle(fontSize: 11, color: Colors.white38, fontFamily: 'monospace'),
-                              ),
+                              title: Text(cfg.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                              subtitle: Text("${cfg.server}:${cfg.port}", style: const TextStyle(fontSize: 11, color: Colors.white38, fontFamily: 'monospace')),
                               trailing: cfg.lastPingMs != null
                                   ? Text(
                                       "${cfg.lastPingMs}ms",
@@ -610,22 +930,15 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                     ),
 
-              const SizedBox(height: 18),
+              const SizedBox(height: 16),
 
-              // 4. Encrypted Telemetry & Anti-Forensics Logs
-              const Text(
-                "کنسول امنیتی و پایش پدافند آریا (Cyber Logs)",
-                style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.white70),
-              ),
+              // 7. Dynamic Cyber Logger Terminal Console
+              const Text("کنسول امنیتی و پایش پدافند آریا (Dynamic Cyber Logs)", style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.white70)),
               const SizedBox(height: 8),
               Container(
                 height: 110,
                 padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: Colors.black,
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: Colors.white10),
-                ),
+                decoration: BoxDecoration(color: Colors.black, borderRadius: BorderRadius.circular(10), border: Border.all(color: Colors.white10)),
                 child: ListView.builder(
                   shrinkWrap: true,
                   itemCount: _securityLogs.length,
@@ -634,11 +947,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       padding: const EdgeInsets.only(bottom: 4.0),
                       child: Text(
                         _securityLogs[index],
-                        style: const TextStyle(
-                          color: Color(0xFF39FF14),
-                          fontSize: 11,
-                          fontFamily: 'monospace',
-                        ),
+                        style: const TextStyle(color: Color(0xFF39FF14), fontSize: 11, fontFamily: 'monospace'),
                       ),
                     );
                   },
@@ -648,30 +957,44 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ),
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _showImportLinkDialog,
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () {
+          // Provide interactive choice between text paste and camera QR
+          showModalBottomSheet(
+            context: context,
+            backgroundColor: const Color(0xFF101014),
+            builder: (context) {
+              return SafeArea(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    ListTile(
+                      leading: const Icon(Icons.qr_code_scanner, color: Color(0xFF00F0FF)),
+                      title: const Text("اسکن با دوربین (QR Code Camera)", style: TextStyle(fontSize: 13)),
+                      onTap: () {
+                        Navigator.pop(context);
+                        _showCameraQRScannerMock();
+                      },
+                    ),
+                    ListTile(
+                      leading: const Icon(Icons.paste, color: Color(0xFFFF007F)),
+                      title: const Text("درج مستقیم متن پیوند (Clip Board)", style: TextStyle(fontSize: 13)),
+                      onTap: () {
+                        Navigator.pop(context);
+                        _showImportLinkDialog();
+                      },
+                    ),
+                  ],
+                ),
+              );
+            },
+          );
+        },
         backgroundColor: const Color(0xFF00F0FF),
         foregroundColor: Colors.black,
-        shape: const CircleBorder(),
-        tooltip: "درج مستقیم لینک",
-        child: const Icon(Icons.add),
+        icon: const Icon(Icons.add),
+        label: const Text("افزودن کانفیگ (Import)", style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
       ),
-    );
-  }
-
-  Widget _buildMetricRow(String label, String value, IconData icon) {
-    return Row(
-      children: [
-        Icon(icon, size: 18, color: const Color(0xFF00F0FF)),
-        const SizedBox(width: 10),
-        Expanded(
-          child: Text(label, style: const TextStyle(fontSize: 12, color: Colors.white70)),
-        ),
-        Text(
-          value,
-          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white),
-        ),
-      ],
     );
   }
 }

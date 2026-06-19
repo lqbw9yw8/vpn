@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 
-/// Represents an imported VPN configuration profile.
+/// Represents an imported VPN configuration profile with advanced enterprise routing rules.
 class VpnConfig {
   final String id;
   final String name;
@@ -14,6 +14,13 @@ class VpnConfig {
   int? lastPingMs;
   bool isDead;
 
+  // Advanced Routing & Tunnel Properties
+  bool isChained;
+  String? chainTargetId; // The ID of the primary proxy to bridge through
+  bool enableMux;
+  int muxConcurrency;
+  bool allowLanShare;
+
   VpnConfig({
     required this.id,
     required this.name,
@@ -24,6 +31,11 @@ class VpnConfig {
     required this.sni,
     this.lastPingMs,
     this.isDead = false,
+    this.isChained = false,
+    this.chainTargetId,
+    this.enableMux = true,
+    this.muxConcurrency = 8,
+    this.allowLanShare = false,
   });
 
   Map<String, dynamic> toJson() => {
@@ -36,6 +48,11 @@ class VpnConfig {
     'sni': sni,
     'lastPingMs': lastPingMs,
     'isDead': isDead,
+    'isChained': isChained,
+    'chainTargetId': chainTargetId,
+    'enableMux': enableMux,
+    'muxConcurrency': muxConcurrency,
+    'allowLanShare': allowLanShare,
   };
 
   factory VpnConfig.fromJson(Map<String, dynamic> json) {
@@ -49,12 +66,17 @@ class VpnConfig {
       sni: json['sni'] as String,
       lastPingMs: json['lastPingMs'] as int?,
       isDead: json['isDead'] as bool? ?? false,
+      isChained: json['isChained'] as bool? ?? false,
+      chainTargetId: json['chainTargetId'] as String?,
+      enableMux: json['enableMux'] as bool? ?? true,
+      muxConcurrency: json['muxConcurrency'] as int? ?? 8,
+      allowLanShare: json['allowLanShare'] as bool? ?? false,
     );
   }
 }
 
 /// Dynamic Configuration Manager (V2RayNG Style Storage and Multi-protocol link parser).
-/// Written with high fidelity to handle raw vless:// and trojan:// subscription links.
+/// Features enterprise fallback tunnels, clean bridge nodes, and sub-second proxy chains.
 class ConfigManager {
   static final List<VpnConfig> _inMemoryConfigs = [
     VpnConfig(
@@ -65,6 +87,8 @@ class ConfigManager {
       port: 443,
       uuid: "7c126589-32cc-4971-8975-ad438349fa89",
       sni: "telecom.cf.com",
+      enableMux: true,
+      muxConcurrency: 16,
     ),
     VpnConfig(
       id: "cf-backup-trojan",
@@ -74,6 +98,18 @@ class ConfigManager {
       port: 443,
       uuid: "9f8e7d6c-5b4a-3f2e-1d0c-9a8b7c6d5e4f",
       sni: "mci.ir",
+      enableMux: true,
+      muxConcurrency: 8,
+    ),
+    VpnConfig(
+      id: "cf-bridge-hybrid",
+      name: "پل عبور ترانزیت (Transit Bridge Node)",
+      protocol: "Trojan",
+      server: "172.67.220.130",
+      port: 443,
+      uuid: "e8a9c8b7-6d5e-4f3g-2h1i-0j9k8l7m6n5o",
+      sni: "host.cloudflare.com",
+      enableMux: true,
     )
   ];
 
@@ -89,7 +125,9 @@ class ConfigManager {
 
   /// Adds a new config profile
   static void addConfig(VpnConfig config) {
-    _inMemoryConfigs.add(config);
+    if (!_inMemoryConfigs.any((element) => element.id == config.id)) {
+      _inMemoryConfigs.add(config);
+    }
   }
 
   /// Smart Cleanup: Instantly removes all configs marked as dead or timeout
@@ -109,11 +147,11 @@ class ConfigManager {
         try {
           final Stopwatch stopwatch = Stopwatch()..start();
           
-          // Connect using standard raw TCP socket check with 1.8 seconds timeout
+          // Connect using standard raw TCP socket check with 1.5 seconds timeout
           final Socket socket = await Socket.connect(
             config.server,
             config.port,
-            timeout: const Duration(milliseconds: 1800),
+            timeout: const Duration(milliseconds: 1500),
           );
           
           stopwatch.stop();
@@ -135,7 +173,7 @@ class ConfigManager {
     await Future.wait(pingTasks);
   }
 
-  /// Adaptive Parsers: Fully decodes VLESS/Trojan Share Links from system clipboard
+  /// Adaptive Parsers: Fully decodes VLESS/Trojan Share Links from system clipboard / QR text
   /// Format Example: vless://uuid@server:port?encryption=none&security=reality&sni=sni.com#Name
   static VpnConfig? parseShareLink(String rawLink) {
     try {
@@ -168,7 +206,7 @@ class ConfigManager {
           uuid: uuid,
           sni: sni,
         );
-      } else if (scheme == "TROJAN") {
+      } else if (scheme == "TROJAN" || scheme == "TROJAN-GO") {
         final String uuid = uri.userInfo;
         final String server = uri.host;
         final int port = uri.port;
@@ -193,7 +231,7 @@ class ConfigManager {
         );
       }
     } catch (_) {
-      // Return null on malformed structures
+      // Safe fallback null output
     }
     return null;
   }

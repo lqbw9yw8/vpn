@@ -1,0 +1,6 @@
+{
+  "name": "Aria Tunnel",
+  "description": "Next-Generation Anti-Censorship VPN Client featuring Sing-box multi-protocol engine, T2HASH raw packet fragmentation, active CDN scanning, and self-healing multi-source resolvers.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

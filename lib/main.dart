@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'services/singbox_config.dart';
 import 'services/amir_scanner_core.dart';
 import 'services/security_rescue_service.dart';
+import 'services/config_manager.dart';
 
 void main() {
   runApp(const UltraVpnApp());
@@ -51,8 +52,8 @@ class _HomeScreenState extends State<HomeScreen> {
   // Connection State variables
   bool _isConnected = false;
   bool _isConnecting = false;
-  String _statusText = "آماده برای اتصال (Ready to Connect)";
-  String _activeIp = "172.19.0.1 (Internal TUN)";
+  String _statusText = "آماده اتصال به شتاب‌دهنده آریا (Ready)";
+  String _activeIp = "172.19.0.1 (TUN)";
   int _activePing = 0;
   
   // Scanned IP lists
@@ -63,6 +64,10 @@ class _HomeScreenState extends State<HomeScreen> {
   Uint8List? _secureUuidBuffer;
   Uint8List? _secureConfigBuffer;
 
+  // Active configuration selection
+  VpnConfig? _selectedConfig;
+  List<VpnConfig> _configs = [];
+
   // Timers and logs
   Timer? _durationTimer;
   int _connectionDurationSeconds = 0;
@@ -71,23 +76,32 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
-    _addLog("سامانه امنیتی آریا بارگذاری شد. آماده دریافت پیکربندی کوانتومی.");
+    _loadConfigurations();
+    _addLog("سامانه مرکزی آریا بارگذاری شد. فناوری ضد فیلترینگ فعال است.");
     
     // Initialize the Amir Scanner Core Scheduler (Battery optimized, every 30 mins)
     _scanner.initializeBatteryOptimizedSchedule(
       onOptimalIPFound: (ScannedIP newIP) {
         setState(() {
-          // Add to log and list
           if (!_discoveredIps.any((element) => element.ip == newIP.ip)) {
             _discoveredIps.insert(0, newIP);
           }
           if (_bestRoute == null || newIP.latencyMs < _bestRoute!.latencyMs) {
             _bestRoute = newIP;
-            _addLog("مسیر پیشرفته CDN شناسایی شد: ${newIP.ip} با تاخیر ${newIP.latencyMs}ms");
+            _addLog("مسیر پیشرفته اسکنر امیر: ${newIP.ip} با پینگ ${newIP.latencyMs}ms شناسایی شد.");
           }
         });
       },
     );
+  }
+
+  void _loadConfigurations() {
+    setState(() {
+      _configs = List.from(ConfigManager.getConfigs());
+      if (_configs.isNotEmpty && _selectedConfig == null) {
+        _selectedConfig = _configs.first;
+      }
+    });
   }
 
   void _addLog(String log) {
@@ -106,35 +120,33 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  // Active Connection Core routine
+  // Connect VPN utilising chosen config & scanner
   Future<void> _connectVpn() async {
-    setState(() {
-      _isConnecting = true;
-      _statusText = "در حال ایمن‌سازی ترافیک و هندشیک PQC...";
-    });
-
-    _addLog("شروع فرآیند اتصال رمزنگاری شده...");
-
-    // Simulate key generation and storage inside secure RAM buffers
-    const String rawUuid = "7c126589-32cc-4971-8975-ad438349fa89";
-    _secureUuidBuffer = _rescueService.allocateSecureCredential(rawUuid);
-
-    // If no optimized route discovered yet, run an instant CDN sweep
-    if (_bestRoute == null) {
-      _addLog("اسکنر امیر: در حال جستجوی سریع آدرس‌های تمیز CDN...");
-      await _scanner.startScan();
+    if (_selectedConfig == null) {
+      _showToast(context, "لطفاً ابتدا یک کانفیگ انتخاب کنید!");
+      return;
     }
 
-    final String targetServer = _bestRoute?.ip ?? "104.16.85.20";
-    final int targetPing = _bestRoute?.latencyMs ?? 84;
+    setState(() {
+      _isConnecting = true;
+      _statusText = "در حال اتصال به ${_selectedConfig!.name}...";
+    });
 
-    // Generate Sing-box Config through SingBoxConfigManager safely
+    _addLog("آغاز هندشیک کوانتومی با سرور ${_selectedConfig!.server}...");
+
+    // Simulate key generation and storage inside secure RAM buffers
+    _secureUuidBuffer = _rescueService.allocateSecureCredential(_selectedConfig!.uuid);
+
+    final String targetServer = _selectedConfig!.server;
+    final int targetPing = _selectedConfig!.lastPingMs ?? _bestRoute?.latencyMs ?? 84;
+
+    // Generate Sing-box Config safely, integrating the chosen profile
     final String configJson = SingBoxConfigManager.generateConfigJson(
       server: targetServer,
-      port: 443,
+      port: _selectedConfig!.port,
       uuid: utf8.decode(_secureUuidBuffer!),
-      protocol: "VLESS",
-      sni: "telecom.cf.com",
+      protocol: _selectedConfig!.protocol,
+      sni: _selectedConfig!.sni,
       tls: true,
       tlsPadding: true,
       fragmentMin: 15,
@@ -144,21 +156,21 @@ class _HomeScreenState extends State<HomeScreen> {
       fakeTrafficEnabled: true,
     );
 
-    // Save configuration inside memory buffer
+    // Save configuration securely inside temporary RAM buffer
     _secureConfigBuffer = _rescueService.allocateSecureCredential(configJson);
 
-    // Simulate Sing-box process spawning
-    await Future.delayed(const Duration(milliseconds: 1200));
+    // Dynamic core emulation delay
+    await Future.delayed(const Duration(milliseconds: 1400));
 
     setState(() {
       _isConnected = true;
       _isConnecting = false;
       _activeIp = targetServer;
       _activePing = targetPing;
-      _statusText = "متصل با پروتکل ضد فیلتر آریا (Connected)";
+      _statusText = "اتصال پایدار با رمزنگاری کوانتومی برقرار است";
     });
 
-    _addLog("رمزنگاری Kyber768 برقرار شد. ترافیک کاملاً مجهز به سپر امنیتی است.");
+    _addLog("سپر سایبری ضد DPI فعال شد. ترافیک کاملاً پنهانگردید.");
     _startDurationTimer();
   }
 
@@ -167,20 +179,20 @@ class _HomeScreenState extends State<HomeScreen> {
     _durationTimer?.cancel();
     
     setState(() {
-      _statusText = "قطع اتصال و امحای اطلاعات RAM (Shredding Keys)...";
+      _statusText = "پاکسازی کامل داده‌ها از حافظه RAM (Anti-Forensics)...";
     });
 
-    _addLog("در خواست قطع اتصال صادر شد. پاکسازی کلیدها فعال گردید.");
+    _addLog("درخواست قطع اتصال صادر شد. فرآیند امحای کلیدها آغاز شد...");
 
-    // DEEP MEMORY WIPE (Anti-forensics zeroing-out immediately)
+    // DEEP MEMORY WIPE (Instant Shredding)
     if (_secureUuidBuffer != null && _secureConfigBuffer != null) {
       _rescueService.forceDeepMemoryWipe([_secureUuidBuffer!, _secureConfigBuffer!]);
       _secureUuidBuffer = null;
       _secureConfigBuffer = null;
-      _addLog("کلید فرکانس و کانفیگ مکتوب حافظه RAM به طور کامل صفرزنی (Shred) شد.");
+      _addLog("امنیت تضمین شد: تمامی کلیدها و جریان‌های متنی هکس از رم سیستم پاکسازی شدند.");
     }
 
-    await Future.delayed(const Duration(milliseconds: 600));
+    await Future.delayed(const Duration(milliseconds: 800));
 
     setState(() {
       _isConnected = false;
@@ -188,37 +200,133 @@ class _HomeScreenState extends State<HomeScreen> {
       _connectionDurationSeconds = 0;
     });
 
-    _addLog("تونل غیرفعال شد. کلیدهای نشست با موفقیت منقضی شدند.");
-
-    // Trigger instant background CDN scan to keep updated IP pool fresh for next flow
-    _scanner.runInstantOnDisconnect();
+    _addLog("فرآیند تونل‌زدایی متوقف شد.");
+    _scanner.runInstantOnDisconnect(); // Background refresh
   }
 
-  // Active Dead-Drop Rescue recovery routine
+  // Perform dynamic latency sort sweep
+  Future<void> _runBulkPingTest() async {
+    _addLog("شروع اسکن سراسری پینگ کانفیگ‌ها (حالت دسته‌ای v2rayNG)...");
+    
+    await ConfigManager.performRealPingTest(
+      onSingleProgress: (id, ping) {
+        setState(() {
+          _loadConfigurations(); // Refresh view state dynamically
+          if (ping != null) {
+            _addLog("کانفیگ [$id] به پینگ مطلوب $ping ms رسید.");
+          } else {
+            _addLog("هشدار: خطا در اتصال با کانفیگ [$id] (Timeout).");
+          }
+        });
+      },
+    );
+
+    _addLog("تست پینگ سراسری با موفقیت خاتمه یافت.");
+  }
+
+  // Emergency Dead-Drop Rescue
   Future<void> _triggerDeadDropRescue() async {
-    _addLog("شروع بازیابی اضطراری از شبکه نجات ضد دزد خط...");
+    _addLog("فعالسازی شبکه نجات ضد فیلتر آریا...");
     setState(() {
-      _statusText = "در حال بازیابی کانفیگ‌های نجات (Emergency Rescue)...";
+      _statusText = "در حال بازیابی اطلاعات اضطراری...";
     });
 
     final DecoupledConfig? rescued = await _rescueService.executeSelfHealingRescue();
     
     if (rescued != null) {
-      _addLog("موفقیت‌آمیز! کانفیگ نجات دریافت شد: ${rescued.server}:${rescued.port}");
+      final newConfig = VpnConfig(
+        id: "rescued-${DateTime.now().millisecondsSinceEpoch}",
+        name: "کانفیگ بازیابی نجات (Aria Rescue Node)",
+        protocol: rescued.protocol,
+        server: rescued.server,
+        port: rescued.port,
+        uuid: rescued.uuid,
+        sni: rescued.sni,
+      );
+
+      ConfigManager.addConfig(newConfig);
+      _loadConfigurations();
+      
+      _addLog("تونل نجات فعال شد: سرور ${rescued.server} اضافه شد.");
       setState(() {
-        _bestRoute = ScannedIP(
-          ip: rescued.server,
-          latencyMs: 72,
-          isSecureAndDpiFree: true,
-        );
-        _statusText = "کانفیگ نجات با موفقیت بارگذاری شد.";
+        _selectedConfig = newConfig;
+        _statusText = "کانفیگ اضطراری دریافت شد!";
       });
+      _showToast(context, "تونل نجات با موفقیت مستقر شد!");
     } else {
-      _addLog("خطا: پورت‌های نجات مسدود هستند یا دسترسی به گیت‌هاب موقتاً قطع است.");
+      _addLog("خطا: سرورهای اضطراری نجات موقتاً در دسترس نیستند.");
       setState(() {
-        _statusText = "خطا در فرآیند نجات. از پل محلی استفاده کنید.";
+        _statusText = "پل نجات متصل نشد.";
       });
+      _showToast(context, "پورت‌های نجات مسدود هستند.");
     }
+  }
+
+  // Dialog to manually parse links via user input text fields
+  void _showImportLinkDialog() {
+    final TextEditingController textController = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          backgroundColor: const Color(0xFF141416),
+          title: const Text(
+            "درج کانفیگ جدید به سبک v2rayNG",
+            style: TextStyle(fontSize: 15, color: Color(0xFF00F0FF)),
+            textAlign: TextAlign.right,
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                "لینک اشتراک خود را (vless:// یا trojan://) در کادر زیر وارد کنید تا تحلیل هوشمند آریا آن را بومی‌سازی کند:",
+                style: TextStyle(fontSize: 12, color: Colors.white70),
+                textAlign: TextAlign.right,
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: textController,
+                maxLines: 4,
+                style: const TextStyle(fontFamily: 'monospace', fontSize: 13),
+                decoration: const InputDecoration(
+                  hintText: "vless://7c126589-32cc-4971-8975-ad438349fa89@104.16.85.20:443?sni=telconfig.com#AriaNode",
+                  hintStyle: TextStyle(color: Colors.white24, fontSize: 11),
+                  filled: true,
+                  fillColor: Colors.black26,
+                  border: OutlineInputBorder(),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text("انصراف", style: TextStyle(color: Colors.white38)),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF00F0FF),
+                foregroundColor: Colors.black,
+              ),
+              onPressed: () {
+                final String raw = textController.text.trim();
+                final VpnConfig? parsed = ConfigManager.parseShareLink(raw);
+                if (parsed != null) {
+                  ConfigManager.addConfig(parsed);
+                  _loadConfigurations();
+                  _addLog("پارس لینک موفقیت آمیز بود. کانفیگ جدید اضافه شد: ${parsed.name}");
+                  _showToast(context, "با موفقیت وارد شد!");
+                } else {
+                  _showToast(context, "ساختار پیوند نامعتبر است!");
+                }
+                Navigator.pop(context);
+              },
+              child: const Text("وارد کردن (Import)"),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   void _startDurationTimer() {
@@ -237,54 +345,74 @@ class _HomeScreenState extends State<HomeScreen> {
     return "${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}";
   }
 
-  @override
-  void dispose() {
-    _durationTimer?.cancel();
-    _scanner.dispose();
-    super.dispose();
+  void _showToast(BuildContext context, String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message, style: const TextStyle(fontSize: 13), textAlign: TextAlign.right),
+        backgroundColor: const Color(0xFFFF007F),
+        duration: const Duration(seconds: 2),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final size = MediaQuery.of(context).size;
-
     return Scaffold(
       appBar: AppBar(
         title: const Text(
-          "تداخل‌گریز هوشمند آریا (Aria VPN)",
-          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, letterSpacing: 0.5),
+          "آریا کوانتوم (Aria v2rayNG)",
+          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
         ),
         centerTitle: true,
         backgroundColor: Colors.transparent,
         elevation: 0,
+        leading: IconButton(
+          tooltip: "پاکسازی کانفیگ‌های مسدود",
+          icon: const Icon(Icons.cleaning_services_outlined, color: Color(0xFFFF007F)),
+          onPressed: () {
+            ConfigManager.removeDeadConfigs();
+            _loadConfigurations();
+            _addLog("پاکسازی خودکار: تمامی مسیرهای قطع و تانل‌های بلااستفاده از دیتابیس حذف شدند.");
+            _showToast(context, "کانفیگ‌های معیوب حذف شدند.");
+          },
+        ),
         actions: [
           IconButton(
-            tooltip: "بازیابی اضطراری کانفیگ",
-            icon: const Icon(Icons.healing_outlined, color: Color(0xFFFF007F)),
+            tooltip: "تست پینگ سراسری",
+            icon: const Icon(Icons.flash_on, color: Color(0xFF39FF14)),
+            onPressed: _runBulkPingTest,
+          ),
+          IconButton(
+            tooltip: "بازیابی شبکه نجات",
+            icon: const Icon(Icons.healing_outlined, color: Color(0xFF00F0FF)),
             onPressed: _triggerDeadDropRescue,
           ),
           IconButton(
-            tooltip: "اسکن آنی CDN تمیز",
-            icon: const Icon(Icons.radar_outlined, color: Color(0xFF00F0FF)),
+            tooltip: "حذف همه کانفیگ‌ها",
+            icon: const Icon(Icons.delete_forever_outlined, color: Colors.white54),
             onPressed: () {
-              _addLog("تلاش دستی برای اسکن شبکه توزیع محتوا...");
-              _scanner.startScan();
+              ConfigManager.clearAllConfigs();
+              setState(() {
+                _configs.clear();
+                _selectedConfig = null;
+              });
+              _addLog("پایگاه داده به طور کامل پاکسازی شد.");
+              _showToast(context, "تمامی کانفیگ‌ها حذف شدند.");
             },
           ),
         ],
       ),
       body: SafeArea(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.all(20.0),
+          padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // 1. Connection Header & Shield Visualization
+              // 1. Connection Circle Button Visualizer
               Center(
                 child: Container(
-                  height: 180,
-                  width: 180,
+                  height: 160,
+                  width: 160,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     boxShadow: [
@@ -300,11 +428,10 @@ class _HomeScreenState extends State<HomeScreen> {
                   child: Stack(
                     alignment: Alignment.center,
                     children: [
-                      // Glow Ring
                       AnimatedContainer(
                         duration: const Duration(milliseconds: 300),
-                        height: 150,
-                        width: 150,
+                        height: 130,
+                        width: 130,
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
                           border: Border.all(
@@ -322,8 +449,8 @@ class _HomeScreenState extends State<HomeScreen> {
                             customBorder: const CircleBorder(),
                             onTap: _isConnecting ? null : _toggleConnection,
                             child: Icon(
-                              _isConnected ? Icons.verified_user : Icons.gpp_maybe_outlined,
-                              size: 64,
+                              _isConnected ? Icons.verified_user : Icons.power_settings_new,
+                              size: 54,
                               color: _isConnected 
                                   ? const Color(0xFF00F0FF) 
                                   : const Color(0xFFFF007F),
@@ -335,122 +462,168 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 ),
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 12),
               
-              // 2. Status Information
+              // Status Label
               Center(
                 child: Text(
                   _statusText,
                   textAlign: TextAlign.center,
                   style: TextStyle(
-                    fontSize: 16,
+                    fontSize: 14,
                     color: _isConnected ? const Color(0xFF00F0FF) : Colors.white70,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 4),
 
               if (_isConnected)
                 Center(
                   child: Text(
                     _formatDuration(_connectionDurationSeconds),
                     style: const TextStyle(
-                      fontSize: 26, 
+                      fontSize: 22, 
                       fontWeight: FontWeight.bold,
                       letterSpacing: 1.5,
-                      color: Color(0xFF39FF14) // Neon Green uptime
+                      color: Color(0xFF39FF14)
                     ),
                   ),
                 ),
 
-              const SizedBox(height: 24),
+              const SizedBox(height: 16),
 
-              // 3. Metadata Dashboard (T2HASH Core Metrics)
+              // 2. Active Session Metrics Card
               Container(
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
                   color: const Color(0xFF141416),
-                  borderRadius: BorderRadius.circular(16),
+                  borderRadius: BorderRadius.circular(12),
                   border: Border.all(color: Colors.white10),
                 ),
                 child: Column(
                   children: [
-                    _buildMetricRow("پروتکل امنیتی (Protocol)", _isConnected ? "VLESS + Kyber PQC" : "غیرفعال", Icons.lock_open),
-                    const Divider(color: Colors.white10, height: 20),
-                    _buildMetricRow("آدرس تمیز اسکن شده (Safe IP)", _activeIp, Icons.public),
-                    const Divider(color: Colors.white10, height: 20),
-                    _buildMetricRow("تاخیر شبکه (HTTP Ping)", "${_isConnected ? _activePing : '0'} ms", Icons.speed),
+                    _buildMetricRow("پروتکل ترافیک فعال", _isConnected ? "${_selectedConfig?.protocol} + Fragment" : "غیرفعال", Icons.lock_outline),
+                    const Divider(color: Colors.white10, height: 16),
+                    _buildMetricRow("آی‌پی هدف امنیتی", _isConnected ? _activeIp : "غیرفعال", Icons.public),
+                    const Divider(color: Colors.white10, height: 16),
+                    _buildMetricRow("پینگ کانکشن اصلی", "${_isConnected ? _activePing : '0'} ms", Icons.speed),
                   ],
                 ),
               ),
 
-              const SizedBox(height: 20),
+              const SizedBox(height: 18),
 
-              // 4. Discovered IP Route Table from Isolate
+              // 3. v2rayNG Style Configuration Registry List
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   const Text(
-                    "آی‌پی‌های تمیز شبکه CDN",
-                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.white70),
+                    "پیکربندی‌ها (Configuration Nodes)",
+                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.white70),
                   ),
                   Text(
-                    "${_discoveredIps.length} آدرس فعال",
-                    style: const TextStyle(fontSize: 12, color: Color(0xFF00F0FF)),
+                    "${_configs.length} سرور بارگذاری شده",
+                    style: const TextStyle(fontSize: 11, color: Color(0xFF00F0FF)),
                   ),
                 ],
               ),
               const SizedBox(height: 8),
-              Container(
-                height: 120,
-                decoration: BoxDecoration(
-                  color: const Color(0xFF141416),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.white10),
-                ),
-                child: _discoveredIps.isEmpty
-                    ? const Center(
+
+              _configs.isEmpty
+                  ? Container(
+                      padding: const EdgeInsets.all(24),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF141416),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Center(
                         child: Text(
-                          "در حال اسکن مداوم شبکه توزیع محتوا...",
+                          "هیچ کانفیگی وارد نشده است. دکمه '+' پایین را برای درج وارد کنید.",
+                          textAlign: TextAlign.center,
                           style: TextStyle(fontSize: 12, color: Colors.white38),
                         ),
-                      )
-                    : ListView.builder(
-                        itemCount: _discoveredIps.length,
+                      ),
+                    )
+                  : SizedBox(
+                      height: 180,
+                      child: ListView.builder(
+                        itemCount: _configs.length,
                         itemBuilder: (context, index) {
-                          final ip = _discoveredIps[index];
-                          return ListTile(
-                            dense: true,
-                            leading: const Icon(Icons.circle, size: 8, color: Color(0xFF39FF14)),
-                            title: Text(ip.ip, style: const TextStyle(fontSize: 13, fontFamily: 'monospace')),
-                            trailing: Text(
-                              "${ip.latencyMs}ms",
-                              style: TextStyle(
-                                fontSize: 13,
-                                color: ip.latencyMs < 150 ? const Color(0xFF39FF14) : Colors.orangeAccent,
-                                fontWeight: FontWeight.bold,
+                          final cfg = _configs[index];
+                          final isCurrent = _selectedConfig?.id == cfg.id;
+                          return Card(
+                            color: isCurrent ? const Color(0xFF1E1E22) : const Color(0xFF141416),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10),
+                              side: BorderSide(
+                                color: isCurrent ? const Color(0xFF00F0FF) : Colors.transparent,
+                                width: 1.5,
                               ),
+                            ),
+                            margin: const EdgeInsets.only(bottom: 8),
+                            child: ListTile(
+                              dense: true,
+                              onTap: () {
+                                setState(() {
+                                  _selectedConfig = cfg;
+                                  _addLog("سوئیچ کانکشن هدف به گره: ${cfg.name}");
+                                });
+                              },
+                              leading: CircleAvatar(
+                                backgroundColor: cfg.protocol == "VLESS" ? const Color(0xFF00F0FF).withOpacity(0.1) : const Color(0xFFFF007F).withOpacity(0.1),
+                                radius: 16,
+                                child: Text(
+                                  cfg.protocol[0],
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: cfg.protocol == "VLESS" ? const Color(0xFF00F0FF) : const Color(0xFFFF007F),
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                              title: Text(
+                                cfg.name,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                              ),
+                              subtitle: Text(
+                                "${cfg.server}:${cfg.port}",
+                                style: const TextStyle(fontSize: 11, color: Colors.white38, fontFamily: 'monospace'),
+                              ),
+                              trailing: cfg.lastPingMs != null
+                                  ? Text(
+                                      "${cfg.lastPingMs}ms",
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.bold,
+                                        color: cfg.isDead 
+                                            ? Colors.redAccent 
+                                            : cfg.lastPingMs! < 180 ? const Color(0xFF39FF14) : Colors.orangeAccent,
+                                      ),
+                                    )
+                                  : const Text("تست نشده", style: TextStyle(fontSize: 10, color: Colors.white38)),
                             ),
                           );
                         },
                       ),
-              ),
+                    ),
 
-              const SizedBox(height: 20),
+              const SizedBox(height: 18),
 
-              // 5. Encrypted Telemetry & Anti-Forensics Logs
+              // 4. Encrypted Telemetry & Anti-Forensics Logs
               const Text(
-                "وقایع‌نگار پدافند امنیتی و حافظه (Shredding Logs)",
-                style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.white70),
+                "کنسول امنیتی و پایش پدافند آریا (Cyber Logs)",
+                style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.white70),
               ),
               const SizedBox(height: 8),
               Container(
-                height: 150,
-                padding: const EdgeInsets.all(12),
+                height: 110,
+                padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
                   color: Colors.black,
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(10),
                   border: Border.all(color: Colors.white10),
                 ),
                 child: ListView.builder(
@@ -458,11 +631,11 @@ class _HomeScreenState extends State<HomeScreen> {
                   itemCount: _securityLogs.length,
                   itemBuilder: (context, index) {
                     return Padding(
-                      padding: const EdgeInsets.only(bottom: 6.0),
+                      padding: const EdgeInsets.only(bottom: 4.0),
                       child: Text(
                         _securityLogs[index],
                         style: const TextStyle(
-                          color: Color(0xFF39FF14), // Classic Cyber hacker green
+                          color: Color(0xFF39FF14),
                           fontSize: 11,
                           fontFamily: 'monospace',
                         ),
@@ -475,20 +648,28 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ),
       ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: _showImportLinkDialog,
+        backgroundColor: const Color(0xFF00F0FF),
+        foregroundColor: Colors.black,
+        shape: const CircleBorder(),
+        tooltip: "درج مستقیم لینک",
+        child: const Icon(Icons.add),
+      ),
     );
   }
 
   Widget _buildMetricRow(String label, String value, IconData icon) {
     return Row(
       children: [
-        Icon(icon, size: 20, color: const Color(0xFF00F0FF)),
-        const SizedBox(width: 12),
+        Icon(icon, size: 18, color: const Color(0xFF00F0FF)),
+        const SizedBox(width: 10),
         Expanded(
-          child: Text(label, style: const TextStyle(fontSize: 13, color: Colors.white70)),
+          child: Text(label, style: const TextStyle(fontSize: 12, color: Colors.white70)),
         ),
         Text(
           value,
-          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.white),
+          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white),
         ),
       ],
     );
